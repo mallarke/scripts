@@ -1,0 +1,297 @@
+#!/usr/bin/python
+
+import os
+import xlrd
+
+from subprocess import call
+
+iphoneFile = "ios/AnalyticKeys.h"
+androidFile = "android/AnalyticKeys.java"
+
+def getHolder(sheet):
+    name = sheet.name
+
+    if name == "views":
+        return ViewHolder(sheet)
+
+    if name == "events":
+        return EventHolder(sheet)
+
+    return None
+
+def isValidCell(value):
+    return (value is not None and len(value) > 0)
+
+def start():
+    user = os.path.expanduser("~")
+    spreadsheet = "Record Google Analytics Event Names.xlsx"
+
+    ssPath = os.path.join(user, "Downloads", spreadsheet)
+    if not os.path.isfile(ssPath) and not os.path.isfile(spreadsheet):
+        exit("missing a valid spread sheet.  it should be in your Downloads dir or from the calling dir.")
+
+    if os.path.isfile(ssPath):
+        call(["mv", ssPath, "."])
+
+    if os.path.isdir("ios"):
+        call(["rm", "-rf", "ios"])
+
+    if os.path.isdir("android"):
+        call(["rm", "-rf", "android"])
+
+    call(["mkdir", "ios"])
+    call(["mkdir", "android"])
+
+    call(["touch", iphoneFile])
+    call(["touch", androidFile])
+
+    with open(iphoneFile, "w") as f:
+        f.write("//  Copyright (c) 2014 Under Armour. All rights reserved.\n\n")
+        f.write("/* AUTO-GENERATED VALUES */\n\n")
+
+    with open(androidFile, "w") as f:
+        f.write("package com.ua.record.analytic;\n\n")
+        f.write("//  Copyright (c) 2014 Under Armour. All rights reserved.\n\n")
+        f.write("/* AUTO-GENERATED VALUES */\n\n")
+        f.write("public class AnalyticKeys {\n\n")
+
+    book = xlrd.open_workbook(spreadsheet)
+    sheetLen = book.nsheets
+
+    for i in range(0, sheetLen):
+        sheet = book.sheet_by_index(i)
+
+        holder = getHolder(sheet)
+        if holder is None:
+            print "unkown tab: ", sheet.name
+            continue
+
+        holder.parse()
+
+    with open(androidFile, "a") as f:
+        f.write("}")
+
+class KeyHolder:
+    def __init__(self, sheet):
+        self.sheet = sheet
+        self.rows = []
+
+    def parse(self):
+        rows = self.sheet.nrows
+        category = None
+
+        for i in range(2, rows):
+            row = self.getRow(i)
+
+            if row.isValid():
+                if row.getCategory() != category and isValidCell(row.getCategory()):
+                    category = row.getCategory()
+
+                row.category = category
+                self.addRow(row)
+
+        self.writeIphone()
+        self.writeAndroid()
+
+    def getRow(self, row):
+        pass
+
+    def addRow(self, row):
+        for r in self.rows:
+            if row.getValue() == r.getValue():
+                return
+
+        self.rows.append(row)
+
+    def writeIphone(self):
+        pass
+
+    def writeAndroid(self):
+        pass
+
+class ViewHolder(KeyHolder):
+    def __init__(self, sheet):
+        KeyHolder.__init__(self, sheet)
+
+    def getRow(self, row):
+        r = Row()
+        r.setKey(self.sheet.cell_value(rowx = row, colx = 0))
+        r.setDescription(self.sheet.cell_value(rowx = row, colx = 3))
+
+        return r
+
+    def writeIphone(self):
+        print "writing iOS view keys"
+
+        with open(iphoneFile, "a") as f:
+            f.write("/******************************\n")
+            f.write(" * Screen Views\n")
+            f.write(" ******************************/\n\n")
+
+            for row in self.rows:
+                description = row.description
+
+                if isValidCell(description):
+                    f.write("/* {0} */\n".format(description))
+
+                key = row.getIosKey() + "ViewKey"
+                f.write("static NSString* const {0} = @\"{1}\";\n\n".format(key, row.getValue()))
+
+    def writeAndroid(self):
+        print "writing Android view keys"
+
+        with open(androidFile, "a") as f:
+            f.write("    /******************************\n")
+            f.write("     * Screen Views\n")
+            f.write("     ******************************/\n\n")
+
+            f.write("    public interface ScreenViews {\n\n")
+
+            for row in self.rows:
+                description = row.description
+
+                if isValidCell(description):
+                    f.write("        /* {0} */\n".format(description))
+
+                f.write("        public String {0} = \"{1}\";\n\n".format(row.getAndroidKey(), row.getValue()))
+
+            f.write("    }\n")
+            
+    def __str__(self):
+        return "ViewHolder<{0}>: bob".format(self.name)
+
+class EventHolder(KeyHolder):
+    def __init__(self, name):
+        KeyHolder.__init__(self, name)
+
+    def getRow(self, row):
+        r = Row()
+        r.setCategory(self.sheet.cell_value(rowx = row, colx = 0))
+        r.setKey(self.sheet.cell_value(rowx = row, colx = 1))
+        r.setDescription(self.sheet.cell_value(rowx = row, colx = 6))
+
+        key = self.sheet.cell_value(rowx = row, colx = 2)
+        value = self.sheet.cell_value(rowx = row, colx = 3)
+
+        r.put(key, value)
+
+        return r
+
+    def writeIphone(self):
+        print "writing iOS event keys"
+
+        with open(iphoneFile, "a") as f:
+            f.write("/******************************\n")
+            f.write(" * Events\n")
+            f.write(" ******************************/\n\n")
+
+            for row in self.rows:
+                description = row.description
+
+                if isValidCell(description):
+                    f.write("/* {0} */\n".format(description))
+
+                key = row.getIosKey() + "EventKey"
+                f.write("static NSString* const {0} = @\"{1}\";\n\n".format(key, row.getValue()))
+
+    def writeAndroid(self):
+        print "writing Android event keys"
+
+        with open(androidFile, "a") as f:
+            f.write("    /******************************\n")
+            f.write("     * Events\n")
+            f.write("     ******************************/\n\n")
+
+            f.write("    public interface Events {\n\n")
+
+            for row in self.rows:
+                description = row.description
+
+                if isValidCell(description):
+                    f.write("        /* {0} */\n".format(description))
+
+                f.write("        public String {0} = \"{1}\";\n\n".format(row.getAndroidKey(), row.getValue()))
+
+            f.write("    }\n")
+        
+    def __str__(self):
+        return "EventHolder<{0}>: bob".format(self.name)
+
+class Row:
+    def __init__(self):
+        self.category = None
+        self.iosKey = None
+        self.androidKey = None
+        self.value = None
+        self.description = None
+        self.dimensions = {}
+
+    def getCategory(self):
+        return self.category
+
+    def setCategory(self, value):
+        self.category = value.capitalize()
+
+    def getIosKey(self):
+        return self.iosKey
+
+    def getAndroidKey(self):
+        return self.androidKey
+
+    def setKey(self, value):
+        value = value.replace(" ", "_")
+        self.value = value
+
+        components = value.split("_")
+        v = ""
+
+        for sequence in components:
+            if len(v) > 0:
+                v = v + "_"
+
+            v = v + sequence.capitalize()
+
+        if len(v) > 0:
+            self.iosKey = "k" + v.replace("_", "")
+            self.androidKey = v.upper()
+
+    def getValue(self):
+        return self.value
+
+    def getDescription(self):
+        return self.description
+
+    def setDescription(self, value):
+        self.description = value
+
+    def getDimensions(self):
+        return self.dimensions
+
+    def put(self, key, value):
+        if isValidCell(key) and isValidCell(value):
+            self.dimensions[key] = value
+
+    def isValid(self):
+        return isValidCell(self.iosKey) and isValidCell(self.androidKey)
+
+    def __str__(self):
+        key = ""
+        components = self.key.split("_")
+        
+        value = ""
+        value = self.append(value, "category", self.category)
+        value = self.append(value, "key", self.key)
+        value = self.append(value, "value", self.value)
+        value = self.append(value, "description", self.description)
+        value = self.append(value, "dimensions", self.dimensions)
+
+        return value
+
+    def append(self, current, key, value):
+        if isValidCell(key):
+            return "{0}{1}: {2}\n".format(current, key, value)
+
+        return current
+
+start()
+call(["cp", androidFile, "/Users/jeremiah.smith/mmf/android/record/application/src/main/java/com/ua/record/analytic/"])
