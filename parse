@@ -5,8 +5,13 @@ import xlrd
 
 from subprocess import call
 
-iphoneFile = "ios/AnalyticKeys.h"
-androidFile = "android/AnalyticKeys.java"
+USER = os.path.expanduser("~")
+ROOT = os.path.join(USER, "analytics")
+ROOT_IOS = ROOT + "/ios"
+ROOT_ANDROID = ROOT + "/android"
+
+IOS_FILE = ROOT_IOS + "/AnalyticKeys.h"
+ANDROID_FILE = ROOT_ANDROID + "/AnalyticKeys.java"
 
 def getHolder(sheet):
     name = sheet.name
@@ -23,33 +28,36 @@ def isValidCell(value):
     return (value is not None and len(value) > 0)
 
 def start():
-    user = os.path.expanduser("~")
-    spreadsheet = "Record Google Analytics Event Names.xlsx"
+    spreadsheetName = "Record Google Analytics Event Names.xlsx"
+    spreadsheet = os.path.join(ROOT, spreadsheetName)
 
-    ssPath = os.path.join(user, "Downloads", spreadsheet)
+    ssPath = os.path.join(USER, "Downloads", spreadsheetName)
     if not os.path.isfile(ssPath) and not os.path.isfile(spreadsheet):
         exit("missing a valid spread sheet.  it should be in your Downloads dir or from the calling dir.")
 
     if os.path.isfile(ssPath):
-        call(["mv", ssPath, "."])
+        call(["mv", ssPath, ROOT])
 
-    if os.path.isdir("ios"):
-        call(["rm", "-rf", "ios"])
+    if not os.path.isdir(ROOT):
+        call(["mkdir", ROOT])
 
-    if os.path.isdir("android"):
-        call(["rm", "-rf", "android"])
+    if os.path.isdir(ROOT_IOS):
+        call(["rm", "-rf", ROOT_IOS])
 
-    call(["mkdir", "ios"])
-    call(["mkdir", "android"])
+    if os.path.isdir(ROOT_ANDROID):
+        call(["rm", "-rf", ROOT_ANDROID])
 
-    call(["touch", iphoneFile])
-    call(["touch", androidFile])
+    call(["mkdir", ROOT_IOS])
+    call(["mkdir", ROOT_ANDROID])
 
-    with open(iphoneFile, "w") as f:
+    call(["touch", IOS_FILE])
+    call(["touch", ANDROID_FILE])
+
+    with open(IOS_FILE, "w") as f:
         f.write("//  Copyright (c) 2014 Under Armour. All rights reserved.\n\n")
         f.write("/* AUTO-GENERATED VALUES */\n\n")
 
-    with open(androidFile, "w") as f:
+    with open(ANDROID_FILE, "w") as f:
         f.write("package com.ua.record.analytic;\n\n")
         f.write("//  Copyright (c) 2014 Under Armour. All rights reserved.\n\n")
         f.write("/* AUTO-GENERATED VALUES */\n\n")
@@ -57,6 +65,8 @@ def start():
 
     book = xlrd.open_workbook(spreadsheet)
     sheetLen = book.nsheets
+
+    dimensionKeys = {}
 
     for i in range(0, sheetLen):
         sheet = book.sheet_by_index(i)
@@ -67,8 +77,68 @@ def start():
             continue
 
         holder.parse()
+        
+        for row in holder.getRows():
+            if row.hasDimensions():
+                dimensionKeys.update(row.getDimensions())
+    
+    with open(ANDROID_FILE, "a") as f:
+        if len(dimensionKeys) > 0:
+            f.write("\n    public interface DimensionKeys {\n")
+            
+            for key in dimensionKeys:
+                key = key.replace(" ", "_")
+                f.write("        public String {0} = \"{1}\";\n".format(key.upper(), key))
 
-    with open(androidFile, "a") as f:
+            f.write("    }\n")
+
+            startContent = "        "
+            content = startContent
+
+            for key, value in dimensionKeys.iteritems():
+                title = ""
+                components = key.split("_")
+
+                if len(components) > 1:
+                    for t in components:
+                        title = title + t.capitalize()
+                else:
+                    title = key.capitalize()
+
+                title = "{0}DimensionValues".format(title)
+
+                f.write("\n    public enum {0} ".format(title))
+                f.write("{\n")
+
+                value = value.replace(", ", ",")
+                components = value.split(",")
+
+                for c in components:
+                    c = c.replace(" ", "_")
+
+                    if len(content) > 8:
+                        content = content + ", "
+
+                    if len(content) > 80:
+                        content = content + "\n" + startContent
+
+                    content = "{0}{1}(\"{2}\")".format(content, c.upper(), c)
+
+                f.write(content + ";\n\n")
+                f.write(startContent + "private String key;\n\n")
+                f.write(startContent + "private {0}(String key) ".format(title))
+                f.write("{\n")
+                f.write(startContent + "    this.key = key;\n")
+                f.write(startContent + "}\n\n")
+                f.write(startContent + "public String getKey() {\n")
+                f.write(startContent + "    return key;\n")
+                f.write(startContent + "};\n")
+
+                f.write("    }\n")
+
+                content = startContent
+                f.write("\n")
+
         f.write("}")
 
 class KeyHolder:
@@ -92,6 +162,9 @@ class KeyHolder:
 
         self.writeIphone()
         self.writeAndroid()
+
+    def getRows(self):
+        return self.rows
 
     def getRow(self, row):
         pass
@@ -123,7 +196,7 @@ class ViewHolder(KeyHolder):
     def writeIphone(self):
         print "writing iOS view keys"
 
-        with open(iphoneFile, "a") as f:
+        with open(IOS_FILE, "a") as f:
             f.write("/******************************\n")
             f.write(" * Screen Views\n")
             f.write(" ******************************/\n\n")
@@ -140,7 +213,7 @@ class ViewHolder(KeyHolder):
     def writeAndroid(self):
         print "writing Android view keys"
 
-        with open(androidFile, "a") as f:
+        with open(ANDROID_FILE, "a") as f:
             f.write("    /******************************\n")
             f.write("     * Screen Views\n")
             f.write("     ******************************/\n\n")
@@ -180,7 +253,7 @@ class EventHolder(KeyHolder):
     def writeIphone(self):
         print "writing iOS event keys"
 
-        with open(iphoneFile, "a") as f:
+        with open(IOS_FILE, "a") as f:
             f.write("/******************************\n")
             f.write(" * Events\n")
             f.write(" ******************************/\n\n")
@@ -197,7 +270,7 @@ class EventHolder(KeyHolder):
     def writeAndroid(self):
         print "writing Android event keys"
 
-        with open(androidFile, "a") as f:
+        with open(ANDROID_FILE, "a") as f:
             f.write("    /******************************\n")
             f.write("     * Events\n")
             f.write("     ******************************/\n\n")
@@ -264,6 +337,9 @@ class Row:
     def setDescription(self, value):
         self.description = value
 
+    def hasDimensions(self):
+        return (len(self.dimensions) > 0)
+
     def getDimensions(self):
         return self.dimensions
 
@@ -275,12 +351,10 @@ class Row:
         return isValidCell(self.iosKey) and isValidCell(self.androidKey)
 
     def __str__(self):
-        key = ""
-        components = self.key.split("_")
-        
         value = ""
         value = self.append(value, "category", self.category)
-        value = self.append(value, "key", self.key)
+        value = self.append(value, "iosKey", self.iosKey)
+        value = self.append(value, "androidKey", self.androidKey)
         value = self.append(value, "value", self.value)
         value = self.append(value, "description", self.description)
         value = self.append(value, "dimensions", self.dimensions)
@@ -294,4 +368,4 @@ class Row:
         return current
 
 start()
-call(["cp", androidFile, "/Users/jeremiah.smith/mmf/android/record/application/src/main/java/com/ua/record/analytic/"])
+call(["cp", ANDROID_FILE, os.path.join(USER, "mmf/android/record/application/src/main/java/com/ua/record/analytic/")])
