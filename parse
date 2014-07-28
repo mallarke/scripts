@@ -240,11 +240,11 @@ class EventHolder(KeyHolder):
     def getRow(self, row):
         r = Row()
         r.setCategory(self.sheet.cell_value(rowx = row, colx = 0))
-        r.setKey(self.sheet.cell_value(rowx = row, colx = 1))
-        r.setDescription(self.sheet.cell_value(rowx = row, colx = 6))
+        r.setKey(self.sheet.cell_value(rowx = row, colx = 0))
+        r.setDescription(self.sheet.cell_value(rowx = row, colx = 5))
 
-        key = self.sheet.cell_value(rowx = row, colx = 2)
-        value = self.sheet.cell_value(rowx = row, colx = 3)
+        key = self.sheet.cell_value(rowx = row, colx = 1)
+        value = self.sheet.cell_value(rowx = row, colx = 2)
 
         r.put(key, value)
 
