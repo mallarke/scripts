@@ -28,6 +28,10 @@ def isValidCell(value):
     return (value is not None and len(value) > 0)
 
 def start():
+    if not os.path.isdir(ROOT):
+        call(["mkdir", ROOT])
+        print "adding analytics dir..."
+
     spreadsheetName = "Record Google Analytics Event Names.xlsx"
     spreadsheet = os.path.join(ROOT, spreadsheetName)
 
@@ -37,9 +41,6 @@ def start():
 
     if os.path.isfile(ssPath):
         call(["mv", ssPath, ROOT])
-
-    if not os.path.isdir(ROOT):
-        call(["mkdir", ROOT])
 
     if os.path.isdir(ROOT_IOS):
         call(["rm", "-rf", ROOT_IOS])
@@ -86,7 +87,7 @@ def start():
         if len(dimensionKeys) > 0:
             f.write("\n    public interface DimensionKeys {\n")
             
-            for key in dimensionKeys:
+            for key in sorted(dimensionKeys):
                 key = key.replace(" ", "_")
                 f.write("        public String {0} = \"{1}\";\n".format(key.upper(), key))
 
@@ -95,7 +96,8 @@ def start():
             startContent = "        "
             content = startContent
 
-            for key, value in dimensionKeys.iteritems():
+            for key in sorted(dimensionKeys):
+                value = dimensionKeys[key]
                 title = ""
                 components = key.split("_")
 
@@ -132,7 +134,7 @@ def start():
                 f.write(startContent + "}\n\n")
                 f.write(startContent + "public String getKey() {\n")
                 f.write(startContent + "    return key;\n")
-                f.write(startContent + "};\n")
+                f.write(startContent + "}\n")
 
                 f.write("    }\n")
 
@@ -148,16 +150,11 @@ class KeyHolder:
 
     def parse(self):
         rows = self.sheet.nrows
-        category = None
 
         for i in range(2, rows):
             row = self.getRow(i)
 
             if row.isValid():
-                if row.getCategory() != category and isValidCell(row.getCategory()):
-                    category = row.getCategory()
-
-                row.category = category
                 self.addRow(row)
 
         self.writeIphone()
@@ -166,14 +163,44 @@ class KeyHolder:
     def getRows(self):
         return self.rows
 
+    def getSortedIosRows(self):
+        keys = []
+
+        for row in self.rows:
+            keys.append(row.getIosKey())
+
+        keys.sort()
+        sortedRows = []
+
+        for key in keys:
+            for row in self.rows:
+                if row.getIosKey() == key:
+                    sortedRows.append(row)
+                    continue
+
+        return sortedRows
+
+    def getSortedAndroidRows(self):
+        keys = []
+
+        for row in self.rows:
+            keys.append(row.getAndroidKey())
+
+        keys.sort()
+        sortedRows = []
+
+        for key in keys:
+            for row in self.rows:
+                if row.getAndroidKey() == key:
+                    sortedRows.append(row)
+                    continue
+
+        return sortedRows
+
     def getRow(self, row):
         pass
 
     def addRow(self, row):
-        for r in self.rows:
-            if row.getValue() == r.getValue():
-                return
-
         self.rows.append(row)
 
     def writeIphone(self):
@@ -201,7 +228,7 @@ class ViewHolder(KeyHolder):
             f.write(" * Screen Views\n")
             f.write(" ******************************/\n\n")
 
-            for row in self.rows:
+            for row in self.getSortedIosRows():
                 description = row.description
 
                 if isValidCell(description):
@@ -220,7 +247,7 @@ class ViewHolder(KeyHolder):
 
             f.write("    public interface ScreenViews {\n\n")
 
-            for row in self.rows:
+            for row in self.getSortedAndroidRows():
                 description = row.description
 
                 if isValidCell(description):
@@ -239,12 +266,11 @@ class EventHolder(KeyHolder):
 
     def getRow(self, row):
         r = Row()
-        r.setCategory(self.sheet.cell_value(rowx = row, colx = 0))
-        r.setKey(self.sheet.cell_value(rowx = row, colx = 1))
-        r.setDescription(self.sheet.cell_value(rowx = row, colx = 6))
+        r.setKey(self.sheet.cell_value(rowx = row, colx = 0))
+        r.setDescription(self.sheet.cell_value(rowx = row, colx = 5))
 
-        key = self.sheet.cell_value(rowx = row, colx = 2)
-        value = self.sheet.cell_value(rowx = row, colx = 3)
+        key = self.sheet.cell_value(rowx = row, colx = 1)
+        value = self.sheet.cell_value(rowx = row, colx = 2)
 
         r.put(key, value)
 
@@ -258,7 +284,7 @@ class EventHolder(KeyHolder):
             f.write(" * Events\n")
             f.write(" ******************************/\n\n")
 
-            for row in self.rows:
+            for row in self.getSortedIosRows():
                 description = row.description
 
                 if isValidCell(description):
@@ -277,7 +303,7 @@ class EventHolder(KeyHolder):
 
             f.write("    public interface Events {\n\n")
 
-            for row in self.rows:
+            for row in self.getSortedAndroidRows():
                 description = row.description
 
                 if isValidCell(description):
@@ -292,18 +318,11 @@ class EventHolder(KeyHolder):
 
 class Row:
     def __init__(self):
-        self.category = None
         self.iosKey = None
         self.androidKey = None
         self.value = None
         self.description = None
         self.dimensions = {}
-
-    def getCategory(self):
-        return self.category
-
-    def setCategory(self, value):
-        self.category = value.capitalize()
 
     def getIosKey(self):
         return self.iosKey
@@ -352,7 +371,6 @@ class Row:
 
     def __str__(self):
         value = ""
-        value = self.append(value, "category", self.category)
         value = self.append(value, "iosKey", self.iosKey)
         value = self.append(value, "androidKey", self.androidKey)
         value = self.append(value, "value", self.value)
